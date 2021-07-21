@@ -5,9 +5,11 @@
 
 #include "bgfx_p.h"
 
-#if BX_PLATFORM_WINDOWS || BX_PLATFORM_LINUX
+#if BX_PLATFORM_WINDOWS || BX_PLATFORM_LINUX || BX_PLATFORM_ANDROID
 #	if BX_PLATFORM_WINDOWS
 #		include <psapi.h>
+#	else
+#		include <dlfcn.h>
 #	endif // BX_PLATFORM_WINDOWS
 #	include <renderdoc/renderdoc_app.h>
 
@@ -53,7 +55,7 @@ namespace bgfx
 			}
 		}
 #else
-		BX_UNUSED(_name);
+		return ::dlopen(_name, RTLD_LOCAL|RTLD_LAZY);
 #endif // BX_PLATFORM_WINDOWS
 
 		return NULL;
@@ -77,17 +79,39 @@ namespace bgfx
 		}
 
 		// If RenderDoc is already injected in the process then use the already present DLL
-		void* renderDocDll = findModule("renderdoc.dll");
-		if (NULL == renderDocDll)
-		{
-			// TODO: try common installation paths before looking in current directory
-			renderDocDll = bx::dlopen(
+		void* renderDocDll = findModule(
 #if BX_PLATFORM_WINDOWS
 					"renderdoc.dll"
+#elif BX_PLATFORM_ANDROID
+					"libVkLayer_GLES_RenderDoc.so",
 #else
-					"./librenderdoc.so"
+					"librenderdoc.so",
+#endif
+				);
+		if (NULL == renderDocDll)
+		{
+			// look for RenderDoc in current directory, then try common installation paths
+			static const char* renderDocPaths[] =
+			{
+#if BX_PLATFORM_WINDOWS
+					"renderdoc.dll",
+					"C:\\Program Files\\RenderDoc\\renderdoc.dll",
+#elif BX_PLATFORM_ANDROID
+					"libVkLayer_GLES_RenderDoc.so",
+#else
+					"librenderdoc.so",
+					"/usr/lib/librenderdoc.so",
 #endif // BX_PLATFORM_WINDOWS
-					);
+			};
+
+			for (uint32_t i = 0; i < BX_COUNTOF(renderDocPaths); ++i)
+			{
+				renderDocDll = bx::dlopen(renderDocPaths[i]);
+				if (NULL != renderDocDll)
+				{
+					break;
+				}
+			}
 		}
 
 		if (NULL != renderDocDll)
@@ -164,4 +188,4 @@ namespace bgfx
 
 } // namespace bgfx
 
-#endif // BX_PLATFORM_WINDOWS || BX_PLATFORM_LINUX
+#endif // BX_PLATFORM_WINDOWS || BX_PLATFORM_LINUX || BX_PLATFORM_ANDROID
